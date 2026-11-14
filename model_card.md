@@ -21,16 +21,22 @@ Prompts:
 
 ## 3. How the Model Works  
 
-Explain your scoring approach in simple language.  
+Think of it less like a smart AI and more like a judge scoring a competition: every song in the catalog gets compared one at a time against a user's stated tastes, and whichever songs score the highest win a spot in the top 5.
 
-Prompts:  
+A user's "taste profile" is just four preferences: a favorite genre, a favorite mood, a target energy level (how mellow or intense they want the music to feel), and whether or not they like acoustic-sounding tracks.
 
-- What features of each song are used (genre, energy, mood, etc.)  
-- What user preferences are considered  
-- How does the model turn those into a score  
-- What changes did you make from the starter logic  
+For each song, the model checks four things and hands out points for each one it gets right:
 
-Avoid code here. Pretend you are explaining the idea to a friend who does not program.
+- **Genre** — does the song's genre exactly match the user's favorite? If so, it earns the single biggest chunk of points. Close genres don't count — "indie pop" is not the same as "pop" as far as the model is concerned.
+- **Mood** — does the song's mood (happy, chill, intense, etc.) exactly match what the user said they wanted? This is worth a good amount of points, just slightly less than genre.
+- **Energy** — rather than a strict yes/no, this one is a sliding scale. A song earns the most points when its energy is exactly what the user asked for, and it loses points gradually the further away it drifts in either direction.
+- **Acoustic feel** — similarly a sliding scale: songs that lean more acoustic score higher for users who said they like acoustic music, and songs that lean less acoustic score higher for users who said they don't.
+
+All four of these points get added together into one final number, and the songs are then lined up from highest score to lowest. The top five highest-scoring songs are what gets recommended. Genre and mood matter most because they are what the user explicitly told the system they want, while energy and acoustic feel act as smaller tiebreakers that fine-tune the ranking.
+
+Alongside each recommended song, the model also writes out the specific reasons it scored well — for example, "matches your favorite genre" or "energy closely matches your target" — so a user can see exactly why a song was picked rather than just trusting a mystery number.
+
+Compared to the starter logic (which just returned the first few songs in the file with no real scoring at all), this is the first version of the system that actually reads the user's preferences and ranks the catalog against them.
 
 ---
 
