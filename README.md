@@ -168,11 +168,232 @@ Top Recommendations
 
 ## Experiments You Tried
 
-Use this section to document the experiments you ran. For example:
+I ran a batch of adversarial / edge-case user profiles through `recommend_songs()` to see whether the scoring logic could be tricked into producing unexpected rankings. All runs used `data/songs.csv` and `k=5`.
 
-- What happened when you changed the weight on genre from 2.0 to 0.5
-- What happened when you added tempo or valence to the score
-- How did your system behave for different types of users
+### 1. Case / whitespace mismatch on genre & mood
+
+`score_song()` compares `genre`/`mood` with plain `==`, so anything that isn't a byte-for-byte match (capitalization, stray whitespace) silently scores as a miss — no error, no warning.
+
+**1a. `favorite_genre="Pop"`, `favorite_mood="Happy"`** (CSV stores them lowercase)
+
+```
+User profile: {'favorite_genre': 'Pop', 'favorite_mood': 'Happy', 'target_energy': 0.8, 'likes_acoustic': False}
+
+Top Recommendations
+========================================
+
+1. Fractal Bloom (1.85 pts)
+   - Energy closely matches your target
+   - Low acousticness, matching your preference
+
+2. Gym Hero (1.82 pts)
+   - Energy closely matches your target
+   - Low acousticness, matching your preference
+
+3. Iron Will (1.81 pts)
+   - Energy closely matches your target
+   - Low acousticness, matching your preference
+
+4. Sunrise City (1.80 pts)
+   - Energy closely matches your target
+   - Low acousticness, matching your preference
+
+5. Carnival Nights (1.80 pts)
+   - Energy closely matches your target
+   - Low acousticness, matching your preference
+```
+
+Sunrise City — the song the worked example above says should score **5.30** and rank #1 — drops to #4 at **1.80** because `"Pop" != "pop"` and `"Happy" != "happy"`. Genre and mood contribute nothing at all for this profile.
+
+**1b. `favorite_genre="pop "`** (trailing space)
+
+```
+User profile: {'favorite_genre': 'pop ', 'favorite_mood': 'chill', 'target_energy': 0.5, 'likes_acoustic': True}
+
+Top Recommendations
+========================================
+
+1. Library Rain (3.21 pts)
+   - Matches your favorite mood (chill)
+   - Energy closely matches your target
+   - High acousticness, matching your preference
+
+2. Spacewalk Thoughts (3.20 pts)
+   - Matches your favorite mood (chill)
+   - High acousticness, matching your preference
+
+3. Midnight Coding (3.13 pts)
+   - Matches your favorite mood (chill)
+   - Energy closely matches your target
+   - High acousticness, matching your preference
+
+4. Coffee Shop Stories (1.76 pts)
+   - Energy closely matches your target
+   - High acousticness, matching your preference
+
+5. Starlit Lullaby (1.70 pts)
+   - High acousticness, matching your preference
+```
+
+No pop song shows up anywhere in the top 5 — a single trailing space erased the entire genre preference.
+
+### 2. `target_energy` outside the documented 0–1 range
+
+**2a. `target_energy=5.0`**
+
+```
+User profile: {'favorite_genre': 'lofi', 'favorite_mood': 'chill', 'target_energy': 5.0, 'likes_acoustic': True}
+
+Top Recommendations
+========================================
+
+1. Library Rain (4.36 pts)
+   - Matches your favorite genre (lofi)
+   - Matches your favorite mood (chill)
+   - High acousticness, matching your preference
+
+2. Midnight Coding (4.21 pts)
+   - Matches your favorite genre (lofi)
+   - Matches your favorite mood (chill)
+   - High acousticness, matching your preference
+
+3. Focus Flow (2.78 pts)
+   - Matches your favorite genre (lofi)
+   - High acousticness, matching your preference
+
+4. Spacewalk Thoughts (2.42 pts)
+   - Matches your favorite mood (chill)
+   - High acousticness, matching your preference
+
+5. Starlit Lullaby (0.95 pts)
+   - High acousticness, matching your preference
+```
+
+**2b. `target_energy=-2.0`**
+
+```
+User profile: {'favorite_genre': 'rock', 'favorite_mood': 'intense', 'target_energy': -2.0, 'likes_acoustic': False}
+
+Top Recommendations
+========================================
+
+1. Storm Runner (4.40 pts)
+   - Matches your favorite genre (rock)
+   - Matches your favorite mood (intense)
+   - Low acousticness, matching your preference
+
+2. Gym Hero (2.45 pts)
+   - Matches your favorite mood (intense)
+   - Low acousticness, matching your preference
+
+3. Iron Will (0.97 pts)
+   - Low acousticness, matching your preference
+
+4. Fractal Bloom (0.92 pts)
+   - Low acousticness, matching your preference
+
+5. Sunrise City (0.82 pts)
+   - Low acousticness, matching your preference
+```
+
+In both cases `energy_closeness` clamps to `0` for every song (`max(0, 1 - abs(...))`), since no song's energy is within 1.0 of a target of 5.0 or -2.0. The ranking degrades gracefully to genre + mood + acoustic only, but silently — nothing tells the user their stated preference is out of bounds and being ignored.
+
+### 3. Genre/mood that doesn't exist anywhere in the catalog
+
+```
+User profile: {'favorite_genre': 'opera', 'favorite_mood': 'euphoric', 'target_energy': 0.5, 'likes_acoustic': False}
+
+Top Recommendations
+========================================
+
+1. Velvet Promises (1.60 pts)
+   - Energy closely matches your target
+   - Low acousticness, matching your preference
+
+2. Fractal Bloom (1.55 pts)
+   - Low acousticness, matching your preference
+
+3. Night Drive Loop (1.53 pts)
+   - Low acousticness, matching your preference
+
+4. Gym Hero (1.52 pts)
+   - Low acousticness, matching your preference
+
+5. Iron Will (1.51 pts)
+   - Low acousticness, matching your preference
+```
+
+`genre_match` and `mood_match` are `0.0` for every song, so the "recommendations" are driven entirely by energy + acoustic fit — effectively ignoring the two preferences the user stated explicitly. The system never flags that it couldn't find any genre/mood match.
+
+### 4. Boundary value on the acousticness reason-text threshold
+
+```
+User profile: {'favorite_genre': 'jazz', 'favorite_mood': 'relaxed', 'target_energy': 0.37, 'likes_acoustic': True}
+
+Top Recommendations
+========================================
+
+1. Coffee Shop Stories (5.39 pts)
+   - Matches your favorite genre (jazz)
+   - Matches your favorite mood (relaxed)
+   - Energy closely matches your target
+   - High acousticness, matching your preference
+
+2. Library Rain (1.84 pts)
+   - Energy closely matches your target
+   - High acousticness, matching your preference
+
+3. Spacewalk Thoughts (1.83 pts)
+   - Energy closely matches your target
+   - High acousticness, matching your preference
+
+4. Starlit Lullaby (1.83 pts)
+   - Energy closely matches your target
+   - High acousticness, matching your preference
+
+5. Quiet Pastures (1.81 pts)
+   - Energy closely matches your target
+   - High acousticness, matching your preference
+```
+
+This one scored as expected — no surprises, just confirms the `>= 0.6` reason-text threshold reads correctly near the boundary.
+
+### 5. Attempt to force a score tie
+
+```
+User profile: {'favorite_genre': 'ambient', 'favorite_mood': 'chill', 'target_energy': 0.28, 'likes_acoustic': True}
+
+Top Recommendations
+========================================
+
+1. Spacewalk Thoughts (5.42 pts)
+   - Matches your favorite genre (ambient)
+   - Matches your favorite mood (chill)
+   - Energy closely matches your target
+   - High acousticness, matching your preference
+
+2. Library Rain (3.29 pts)
+   - Matches your favorite mood (chill)
+   - Energy closely matches your target
+   - High acousticness, matching your preference
+
+3. Midnight Coding (3.07 pts)
+   - Matches your favorite mood (chill)
+   - Energy closely matches your target
+   - High acousticness, matching your preference
+
+4. Starlit Lullaby (1.92 pts)
+   - Energy closely matches your target
+   - High acousticness, matching your preference
+
+5. Quiet Pastures (1.86 pts)
+   - Energy closely matches your target
+   - High acousticness, matching your preference
+```
+
+This particular profile didn't land an exact tie in the top 5 — two songs outside the top 5 (Velvet Promises / Golden Hour Drive) rounded to the same displayed score (1.18) but differed at full float precision (1.18 vs 1.1800000000000002), so they weren't actually tied. Digging further with a brute-force search did turn up a genuine exact tie elsewhere in the catalog (`favorite_genre="ambient"`, `favorite_mood="angry"`, `target_energy=0.0`, `likes_acoustic=True` ties Golden Hour Drive and Velvet Promises at exactly 0.9). That confirmed a real bug: `recommend_songs()` only sorts by `(song, score, reason)` on `score` — it never breaks ties by energy closeness the way the README (line 59) claims it does. Tied songs just keep whatever order they happened to have in the original CSV.
+
+**Takeaway:** the scoring formula itself behaves as documented, but the surrounding system has no input validation (case/whitespace sensitivity, no range-checking on `target_energy`) and the documented tie-breaking rule isn't actually implemented in code.
 
 ---
 
