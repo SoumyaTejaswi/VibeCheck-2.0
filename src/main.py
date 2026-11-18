@@ -20,7 +20,7 @@ def main() -> None:
         "favorite_genre": "pop",
         "favorite_mood": "happy",
         "target_energy": 0.8,
-        "likes_ac oustic": False,
+        "likes_acoustic": False,
     }
 
     recommendations = recommend_songs(user_prefs, songs, k=5)
